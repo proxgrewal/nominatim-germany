@@ -1,31 +1,38 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Path to the local OSM PBF
 OSM_PBF="/nominatim/data.osm.pbf"
+FLATNODE_FILE="/nominatim/flatnode.file"
+PGDATA="/var/lib/postgresql/14/main"
 
-# Ensure /nominatim/data exists
-mkdir -p /nominatim/data
-chown -R root:root /nominatim
+mkdir -p /nominatim
+chown -R nominatim:nominatim /nominatim
 
-# Download Germany PBF if missing
+# Download PBF only if missing
 if [ ! -f "$OSM_PBF" ]; then
     echo "Downloading Germany OSM extract..."
     curl -L -o "$OSM_PBF" https://download.geofabrik.de/europe/germany-latest.osm.pbf
 else
-    echo "OSM PBF already exists at $OSM_PBF, skipping download."
+    echo "Found existing OSM extract: $OSM_PBF"
 fi
 
-# Export PBF path for Nominatim
+# Export env vars for Nominatim
 export PBF_URL="$OSM_PBF"
+export NOMINATIM_FLATNODE_FILE="$FLATNODE_FILE"
+export THREADS=${THREADS:-$(nproc)}
 
-# Detect CPU cores for multi-threaded import
-THREADS=$(nproc)
-export THREADS
-echo "Using $THREADS threads for import..."
+echo "Using $THREADS threads..."
+echo "Flatnode file: $NOMINATIM_FLATNODE_FILE"
 
-# Run Nominatim import
-/app/init.sh --osmfile "$PBF_URL" --threads "$THREADS"
+# Import only if DB not initialized
+if [ ! -f "$PGDATA/PG_VERSION" ]; then
+    echo "Database not initialized. Starting import..."
+    /app/init.sh --osmfile "$PBF_URL" \
+                 --threads "$THREADS" \
+                 --flatnodes "$NOMINATIM_FLATNODE_FILE"
+else
+    echo "Database already exists, skipping import."
+fi
 
-# Start Nominatim service
+echo "Starting Nominatim..."
 exec /app/run.sh
