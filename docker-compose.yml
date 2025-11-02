@@ -5,9 +5,19 @@ services:
     image: mediagis/nominatim:5.1
     container_name: nominatim
     environment:
-      - PBF_URL=https://download.geofabrik.de/europe/germany-latest.osm.pbf
+      # Use local file if mounted; otherwise fallback to remote download
+      PBF_URL: /nominatim/data.osm.pbf
+      # Use all available CPU cores
+      THREADS: ${THREADS:-$(nproc)}
+      # Enable flatnode storage for faster lookups
+      NOMINATIM_FLATNODE_FILE: /nominatim/flatnode.file
+      # Enable import optimization
+      NOMINATIM_USE_FASTIMPORT: 1
+    volumes:
+      - ./data:/nominatim
     ports:
       - "8081:8080"
     stdin_open: true
     tty: true
     restart: unless-stopped
+    command: ["/nominatim/init_and_run.sh"]
